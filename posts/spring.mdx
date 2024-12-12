@@ -1,0 +1,313 @@
+# 1. 定义 bean
+
+**先看一段手动定义 bean 并将其注册到 spring 容器的代码：**
+
+```java
+@SpringBootTest
+public class BeanDefinitionTest {
+
+    @Resource
+    private ApplicationContext applicationContext;
+
+    @Test
+    public void testGenericBeanDefinition(){
+        // GenericBeanDefinition 是 Spring 用来定义一个 Bean 的类,通常用于配置不需要继承关系的 bean,可通过它来指定 Bean 的类名、属性、初始化方法等配置
+        GenericBeanDefinition beanDefinition = new GenericBeanDefinition();
+        // 设置 Bean 的类名
+        beanDefinition.setBeanClassName("shark.learn.source.code.spring.domain.User");
+        // 设置了该 Bean 的作用域为 "singleton",意味着该 Bean 在 Spring 容器中只会有一个实例
+        beanDefinition.setScope("singleton");
+        // 指定了初始化方法的名称,若该 bean 存在该方法,则 Spring 容器完成 Bean 的创建并注入依赖后,自动执行该方法
+        beanDefinition.setInitMethodName("init");
+        // MutablePropertyValues 是一个可以存放多个属性值的集合,用于设置 Bean 的属性值。
+        MutablePropertyValues propertyValues = new MutablePropertyValues();
+        propertyValues.add("name","张三");
+        propertyValues.addPropertyValue("age",20);
+        // 将 propertyValues 设置到 beanDefinition 上,告诉 Spring 容器在创建 User Bean 时,要将这些属性值注入到 Bean 中
+        beanDefinition.setPropertyValues(propertyValues);
+        // 将 bean 注册到 spring 容器中
+        BeanDefinitionRegistry registry = (BeanDefinitionRegistry) applicationContext;
+        registry.registerBeanDefinition("user", beanDefinition);
+        // 从 Spring 容器中获取一个 User 类型的 Bean        User user = applicationContext.getBean(User.class);
+        System.out.println(user);
+    }
+}
+
+// User代码
+@Data
+@ToString
+@NoArgsConstructor
+@AllArgsConstructor
+public class User {
+    private String name;
+
+    private Integer age;
+
+    public void init(){
+        System.out.println("user 被注入到了 spring 容器中!");
+    }
+}
+```
+
+**代码分三部分：**
+
+1. 先使用 BeanDefinition 去定义 Bean，以及它的属性、初始化方法、作用域等
+2. 然后通过 BeanDefinitionRegistry 将 Bean 注册到 spring 的容器中
+3. 最后使用 ApplicationContext 从 Spring 容器中拿到 Bean
+
+## 1.1. BeanDefinition
+
+**BeanDefinition 主要有两个作用：**
+
+1. **定义 Bean 的配置**：提供关于如何构建一个 bean 的信息，例如 bean 类名、构造函数参数、属性值、初始化方法、销毁方法等。Spring 容器通过它来创建和配置实际的 bean 实例。
+2. **元数据存储**：`BeanDefinition` 也充当了 bean 的元数据存储器，存储 bean 的配置信息，Spring 容器可以根据这些信息来管理 bean 的生命周期。
+
+**BeanDefinition 的其他功能：**
+除了基本的配置功能外，`BeanDefinition` 还支持一些高级功能，如：
+
+- **生命周期管理**：Spring 可以通过 `BeanDefinition` 中指定的初始化方法（`init-method`）和销毁方法（`destroy-method`）来管理 bean 的生命周期。Spring 会在合适的时机调用这些方法。
+- **作用域管理**：`BeanDefinition` 管理了 bean 的作用域（scope），例如是否是单例模式（singleton）或原型模式（prototype）。作用域决定了 Spring 如何创建和管理该 bean 的实例。
+- **自动装配**：`BeanDefinition` 支持自动装配（autowiring），它可以根据类型或名称自动注入依赖。通过设置 `autowireMode` 属性，Spring 容器会自动装配符合条件的 bean。
+- **条件化 Bean 定义**：在某些场景下，我们可能需要根据环境或配置条件来注册某些 bean。例如，可以通过条件注解（`@Conditional`）或配置文件来控制 bean 是否被注册。
+
+**常见的 BeanDefinition 实现类：**
+
+- **RootBeanDefinition**：
+  - `BeanDefinition` 的一种实现，用于定义标准的、完整的 bean。支持包括构造器参数、属性值、初始化方法、销毁方法等各种配置。
+  - 继承自 `AbstractBeanDefinition`，并增加了更多的功能和配置选项。
+  - 通常用于定义没有父 bean 的普通 bean。
+  - Spring IoC 容器中独立 Bean 定义的标准实现。
+  - 专注于完整的 Bean 配置场景，支持父类合并、自动装配、方法覆盖等高级功能。
+- **ChildBeanDefinition**：
+  - `RootBeanDefinition` 的子类，表示一个继承自父 bean 的定义。它可以继承父 bean 的属性、构造函数参数等，并且可以覆盖某些配置。
+  - 常用于实现 bean 的继承或父子 bean 关系。通常用于动态创建具有父类配置的 bean。
+  - 通过 `parentName` 字段，子 bean 可以引用父 bean 的定义。
+- **GenericBeanDefinition**：
+  - `RootBeanDefinition` 的一个简单实现，通常用于简单的 bean 定义，它不支持复杂的功能。它适用于那些无需特殊配置的 bean 定义，通常用于在 Spring 配置类中通过 Java 配置注册 bean。
+  - 仅继承了 `AbstractBeanDefinition` 的基础属性（如 Bean 类名、作用域、依赖等），不包含任何与父子关系、方法覆盖、生命周期回调等特定场景相关的扩展属性。
+  - 没有特定的依赖解析逻辑，依赖注入交由 IoC 容器处理。
+
+### 1.1.1. Root、Generic 两种 BeanDefinition
+
+**为什么设计两者：权衡灵活性与功能的需求**
+`GenericBeanDefinition` 的优势
+
+- 灵活：适合框架扩展和动态场景，可以在运行时快速定义和注册 Bean。
+- 轻量：不引入复杂的父子关系或额外逻辑，更容易理解和使用。
+  `RootBeanDefinition` 的优势：
+- 功能完整：满足绝大多数普通 Bean 配置的需求。
+- 向后兼容：支持 XML 配置时代的所有功能，适用于 Spring 的核心 IoC 容器。
+
+**设计思想**
+
+- **分而治之**：将通用功能与高级功能分开，降低复杂度，同时提供高扩展性。
+- **灵活性与性能的平衡**：`GenericBeanDefinition` 牺牲了一些高级功能，换取了动态定义和简单场景的轻量化；`RootBeanDefinition` 提供了更多功能，适合默认使用。
+- **多态支持**：通过接口（如 `BeanDefinition`）统一行为，允许不同实现类根据场景发挥各自优势。
+
+### 1.1.2. BeanDefinition 代码结构
+
+`BeanDefinition` 是一个接口，定义了一些用于描述和配置 bean 的方法。Spring 框架提供了多个实现类来支持不同的需求。最常用的实现类是 `RootBeanDefinition` 和 `GenericBeanDefinition`。
+`BeanDefinition` 的核心方法如下：
+
+- **获取和设置类名**
+  - `getBeanClassName()`：返回 bean 的类名。
+  - `setBeanClassName(String beanClassName)`：设置 bean 的类名。
+- **作用域**
+  - `getScope()`：返回该 bean 的作用域，通常是 `"singleton"` 或 `"prototype"`。
+  - `setScope(String scope)`：设置该 bean 的作用域。
+- **初始化方法**
+  - `getInitMethodName()`：获取 bean 的初始化方法名。
+  - `setInitMethodName(String initMethodName)`：设置 bean 的初始化方法名。
+- **销毁方法**
+  - `getDestroyMethodName()`：获取销毁方法名。
+  - `setDestroyMethodName(String destroyMethodName)`：设置销毁方法名。
+- **属性值**
+  - `getPropertyValues()`：返回 `MutablePropertyValues`，即所有属性值的集合。
+  - `setPropertyValues(MutablePropertyValues propertyValues)`：设置属性值。
+- **构造函数参数**
+  - `getConstructorArgumentValues()`：返回 `ConstructorArgumentValues`，即构造方法参数的集合。
+  - `setConstructorArgumentValues(ConstructorArgumentValues argumentValues)`：设置构造方法参数。
+- **依赖注入**
+  - `getAutowireMode()`：获取自动装配的方式。
+  - `setAutowireMode(int autowireMode)`：设置自动装配的方式。
+
+## 1.2. 类之间的层次结构
+
+![](BeanDefinition-BeanDefinition.drawio%201.png)
+
+<center>BeanDefinition 继承结构图</center>
+
+**结构层次中的逻辑关系总结**
+
+- **`AttributeAccessor` 和 `BeanMetadataElement`** 是两个核心的通用接口，用于描述元数据和属性存储。
+- **`BeanDefinition`** 是所有 Bean 定义的核心接口，描述了 Bean 的配置。
+- **抽象实现层**（`AbstractBeanDefinition`、`BeanMetadataAttributeAccessor` 等）为具体实现类提供了通用功能。
+- **具体实现类**（如 `RootBeanDefinition`、`ChildBeanDefinition`、`GenericBeanDefinition`）根据不同的使用场景提供了各种功能。
+
+### 1.2.1. 各个接口、类的简单描述
+
+![](BeanDefinition-BeanDefinition%20各元素作用描述.drawio.png)
+
+#### 1.2.1.1. **Interface:** `AttributeAccessor`
+
+- **作用**：提供一个通用的机制，用于管理键值对属性。属性值可以通过名称进行设置和检索。
+- **典型场景**：
+  - 在 Spring 容器中存储和传递元数据信息（例如注解数据、配置属性）。
+- **关键方法**：
+  - `setAttribute(String name, Object value)`: 设置属性。
+  - `getAttribute(String name)`: 获取属性。
+  - `removeAttribute(String name)`: 移除属性。
+
+#### 1.2.1.2. **Class:** `AttributeAccessorSupport`
+
+- **作用**：`AttributeAccessor` 的具体实现类，提供了属性存储的基本实现。
+- **功能**：
+  - 通过内部使用的 `Map` 来管理属性键值对。
+- **主要职责**：
+  - 为子类（例如 `BeanMetadataAttributeAccessor`）提供通用的属性管理能力。
+
+#### 1.2.1.3. **Interface: `BeanMetadataElement`**
+
+- **作用**：表示一个对象可以关联元数据信息，特别是在 XML 或注解中指定的配置元数据。
+- **典型场景**：**典型场景**： **典型场景**：
+  - 用于表示 Bean 定义中包含的原始元数据信息，例如资源文件路径。用于表示 Bean 定义中包含的原始元数据信息，例如资源文件路径。用于表示 Bean 定义中包含的原始元数据信息，例如资源文件路径。
+- **关键方法**：
+  - `Object getSource()`: 获取元数据的来源信息。
+
+#### 1.2.1.4. \*\*Interface: `BeanDefinition`
+
+- **作用**：Spring 中定义 Bean 的核心接口，描述了 Bean 的所有元数据信息。
+- **典型场景**：
+  - 定义 Bean 的类名、作用域（`singleton` 或 `prototype`）、依赖关系等。
+- **关键方法**：
+  - `setBeanClassName(String beanClassName)`: 设置 Bean 的类名。
+  - `getBeanClassName()`: 获取 Bean 的类名。
+  - `setScope(String scope)`: 设置 Bean 的作用域。
+  - `getScope()`: 获取 Bean 的作用域。
+  - `isLazyInit()`: 是否懒加载。
+
+#### 1.2.1.5. **Class: `AbstractBeanDefinition`**
+
+- **作用**：`BeanDefinition` 的抽象实现类，提供了一些通用的属性和方法。
+- **典型场景**：
+  - 用作 `RootBeanDefinition` 和 `ChildBeanDefinition` 的基类。
+- **功能**：
+  - 提供通用的 Bean 属性，例如初始化方法、销毁方法、依赖注入方式等。
+- **关键方法**：
+  - `setLazyInit(boolean lazyInit)`: 设置是否懒加载。
+  - `setAutowireMode(int autowireMode)`: 设置自动装配模式。
+
+#### 1.2.1.6. \*\*Class: `BeanMetadataAttributeAccessor`
+
+- **作用**：继承自 `AttributeAccessorSupport`，同时实现了 `BeanMetadataElement`，用于存储 Bean 定义的元数据信息。
+- **功能**：
+  - 存储和管理与 Bean 相关的元数据。
+  - 结合了 `AttributeAccessor` 和 `BeanMetadataElement` 的功能。
+
+#### 1.2.1.7. **Interface: `AnnotatedBeanDefinition`**
+
+- **作用**：扩展 `BeanDefinition`，用于描述注解定义的 Bean。
+- **典型场景**：
+  - 当通过注解（如 `@Component`）定义 Bean 时，Spring 使用这个接口来表示这些定义。
+- **关键方法**：
+  - `getMetadata()`: 获取注解元数据信息。
+  - `getFactoryMethodMetadata()`: 获取工厂方法的元数据信息。
+
+#### 1.2.1.8. **Class: `AnnotatedGenericBeanDefinition`**
+
+- **作用**：`AnnotatedBeanDefinition` 的具体实现，表示基于注解的通用 Bean 定义。
+- **功能**：
+  - 支持读取类上的注解，并将注解元数据与 Bean 定义相关联。
+
+#### 1.2.1.9. \*\*Class: `ChildBeanDefinition`
+
+- **作用**：表示一个子 Bean 定义，继承自另一个父 Bean 定义。
+- **典型场景**：
+  - 用于构建父子 Bean 的层次关系，子 Bean 可以继承父 Bean 的配置。
+- **特性**：
+  - 子 Bean 可以覆盖父 Bean 的某些属性。
+
+#### 1.2.1.10. \*\*Class: `GenericBeanDefinition`
+
+- **作用**：一个通用的、简单的 Bean 定义实现，支持对 Bean 的动态定义和配置。
+- **典型场景**：
+  - 用于程序化地定义 Bean（而不是通过 XML 或注解）。
+- **特性**：
+  - 是一个灵活的 Bean 定义，可以动态设置所有属性。
+
+#### 1.2.1.11. \*\*Class: `RootBeanDefinition`
+
+- **作用**：表示一个标准的、独立的 Bean 定义，没有父 Bean 的依赖关系。
+- **典型场景**：
+  - 用于定义一个独立的 Bean。
+- **特性**：
+  - 提供了对 Bean 定义的完整描述。
+  - 是大多数 Bean 定义的基础。
+
+#### 1.2.1.12. \*\*Class: `ScannedGenericBeanDefinition`
+
+- **作用**：扩展自 `GenericBeanDefinition`，用于处理通过类路径扫描发现的注解 Bean 定义。
+- **典型场景**：
+  - 当使用 `@ComponentScan` 扫描类路径并找到带有注解的类时，Spring 会创建 `ScannedGenericBeanDefinition`。
+- **特性**：
+  - 能够关联注解元数据信息。
+
+**类与接口的使用场景分析**
+
+| **类/接口**                          | **使用场景**                                                                                                                         | **常用性** | **原因**                                                                                              |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ---------- | ----------------------------------------------------------------------------------------------------- |
+| **`AttributeAccessor`**              | 属性存储和检索的通用接口，主要用于框架内部扩展。                                                                                     | 不常用     | 直接操作属性存储的场景较少。通常由其子类（如 `AttributeAccessorSupport`）间接使用。                   |
+| **`AttributeAccessorSupport`**       | 继承 `AttributeAccessor`，在 `BeanDefinition` 等核心类中作为属性存储的实现类。                                                       | 不常用     | 它是一个底层工具类，大部分功能都通过更高级的类（如 `BeanDefinition`）实现。                           |
+| **`BeanMetadataElement`**            | 表示元数据来源的通用接口，主要用于 XML 配置文件中描述 Bean 的定义来源。                                                              | 不常用     | 它仅仅是一个标记接口（Marker Interface），提供了元数据来源方法，更多功能由具体实现类提供。            |
+| **`BeanDefinition`**                 | Spring IoC 容器中描述 Bean 的核心接口，用于定义 Bean 的所有属性（如类名、作用域、依赖关系等）。                                      | 常用       | 是 Bean 定义的核心抽象，几乎所有场景都依赖这个接口，例如通过 `BeanDefinitionRegistry` 手动注册 Bean。 |
+| **`AbstractBeanDefinition`**         | `BeanDefinition` 的抽象实现类，为具体实现类（如 `RootBeanDefinition`）提供通用的属性支持（如自动装配模式、生命周期回调）。           | 较常用     | 作为许多子类的基础，包含了通用功能和默认实现。                                                        |
+| **`RootBeanDefinition`**             | 表示独立的 Bean 定义（无父类依赖）。用于大多数独立 Bean 的场景，例如 XML 配置或通过编程方式定义的普通 Bean。                         | 常用       | Spring 中的默认 Bean 定义类型，用于定义绝大多数 Bean。                                                |
+| **`ChildBeanDefinition`**            | 子 Bean 定义，用于定义继承了父 Bean 的属性，并允许覆盖某些配置。例如定义多个具有共同属性的 Bean 时，子 Bean 可以继承父 Bean 的定义。 | 不常用     | 现代开发中更倾向于使用 Java 配置或注解代替 XML 配置，子 Bean 定义的需求减少。                         |
+| **`GenericBeanDefinition`**          | 通用 Bean 定义类，支持动态定义 Bean。用于编程方式（而非 XML）定义 Bean 或在自定义 Bean 解析器中使用。                                | 较常用     | 提供灵活的动态定义能力，是框架扩展的核心工具之一，编程式 Bean 定义的首选。                            |
+| **`AnnotatedBeanDefinition`**        | 用于注解方式定义 Bean 的接口，例如通过 `@Component`、`@Service` 等注解扫描生成 Bean 定义。                                           | 常用       | 现代开发中基于注解的 Bean 定义非常普遍，例如 Spring Boot 项目中广泛使用的注解配置。                   |
+| **`AnnotatedGenericBeanDefinition`** | 结合注解和动态定义的 Bean 定义，允许动态修改注解元数据，例如通过编程方式注册基于注解的 Bean。                                        | 较常用     | 用于框架扩展场景，例如在 AOP 或 Spring Data JPA 中动态生成代理类。                                    |
+| **`ScannedGenericBeanDefinition`**   | 用于类路径扫描时解析 `@Component` 类的 Bean 定义，典型场景是使用 `@ComponentScan` 自动扫描并注册 Bean。                              | 常用       | 是 Spring 自动扫描机制的核心类，在注解方式定义 Bean 时经常被使用。                                    |
+| **`BeanMetadataAttributeAccessor`**  | 提供对 Bean 元数据的存储能力，通常在容器内部使用。例如用于存储注解元数据或 XML 配置的附加信息。                                      | 不常用     | 是一个工具类，大多由 `AbstractBeanDefinition` 等更高级别的类间接调用。                                |
+
+---
+
+### 1.2.2. 设计思想
+
+- **高内聚、低耦合**：将 Bean 的定义、解析和使用分离。例如，Bean 的定义通过 `BeanDefinition`，解析通过 `BeanDefinitionReader`，最终由 IoC 容器管理。
+- **面向接口编程**：使用大量接口（如 `BeanDefinition` 和 `BeanMetadataElement`）解耦具体实现，为扩展性和灵活性提供基础。
+- **层次化设计**：定义了多个抽象层（如接口、抽象类、具体实现），满足从基础功能到高级功能的逐步增强。
+
+**相关的设计模式：**
+
+- 模板方法模式：`AbstractBeanDefinition` 提供了默认的通用实现，子类（如 `RootBeanDefinition`）通过覆写扩展特定功能
+- 工厂模式：Spring IoC 容器本身是一个工厂，用于实例化和管理 Bean 对象
+- 组合模式：`ChildBeanDefinition` 通过引用 `RootBeanDefinition` 实现了继承和组合关系
+- 策略模式：使用不同的 `BeanDefinition` 实现类（如 `GenericBeanDefinition` 和 `AnnotatedGenericBeanDefinition`）应对不同的 Bean 定义方式。
+- 代理模式：在 AOP 和类路径扫描中，通过代理模式动态生成 `ScannedGenericBeanDefinition` 等
+
+### 1.2.3. 各类的优缺点分析
+
+| **类/接口**                        | **优点**                                                     | **缺点**                                                   |
+| ---------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------- |
+| **`AttributeAccessor`**            | 通用属性管理接口，灵活性高。                                 | 使用场景较底层，常需要具体实现类配合，开发者直接使用较少。 |
+| **`BeanDefinition`**               | 高度抽象，定义了 Bean 的所有元数据，便于扩展和适配多种场景。 | 功能过于通用，需要结合具体实现类使用才能发挥作用。         |
+| **`AbstractBeanDefinition`**       | 提供了通用的属性和默认实现，减少子类重复代码。               | 抽象类无法直接使用，依赖具体实现类。                       |
+| **`RootBeanDefinition`**           | 独立 Bean 定义，满足大多数场景需求，设计清晰、简单。         | 无法处理父子关系，扩展性稍逊。                             |
+| **`ChildBeanDefinition`**          | 通过父子关系实现配置继承，适合重复配置的场景。               | XML 配置时代使用较多，注解和 Java 配置中较少用。           |
+| **`GenericBeanDefinition`**        | 灵活的动态 Bean 定义，适合框架扩展或程序化定义 Bean。        | 定义灵活性高，可能引入复杂性，难以调试。                   |
+| **`ScannedGenericBeanDefinition`** | 支持类路径扫描，结合注解的动态解析，简化配置。               | 专用于注解扫描，功能较为单一。                             |
+
+### 1.2.4. **总结：为什么这么设计**
+
+1. **灵活性**：将 `BeanDefinition` 分解为接口和多个实现类，允许开发者在不同场景下选择适合的实现（如注解、XML、动态定义）。通过接口与抽象类分离，提供更大的可扩展性和灵活性。
+2. **可扩展性**：`AbstractBeanDefinition` 和具体实现类（如 `RootBeanDefinition`）的设计提供了基础功能和扩展能力，便于框架开发者扩展。
+3. **向后兼容**：保留了 `ChildBeanDefinition` 等 XML 配置时代常用的功能，确保旧有系统能顺畅迁移。
+4. **适配多种定义方式**：支持 XML 配置、注解定义和动态编程定义，满足不同开发者的需求。
+
+# 2. 加载 bean
+
+# 3. 注册 bean
+
+**关于注册器：**
+在 Spring 中，`BeanDefinitionRegistry` 是一个重要的接口，让 Spring 容器能够手动或动态地向容器中注册 bean 定义。通过 `BeanDefinitionRegistry`，你可以手动注册、修改或删除 Spring 容器中的 bean 定义。这个接口是 Spring 容器中注册和管理 bean 的核心机制之一。一般来说，你不需要直接使用它，除非你在进行自定义的 bean 定义或扩展 Spring 容器的行为。
+最常用的方法是 `registerBeanDefinition`。
